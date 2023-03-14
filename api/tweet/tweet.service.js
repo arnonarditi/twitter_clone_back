@@ -2,7 +2,6 @@
 const dbService = require('../../services/db.service')
 
 async function getTweetsByLoggedinUser(userId) {
-
     const query = `
     select * from tweets 
     where createdBy in(
@@ -10,34 +9,30 @@ async function getTweetsByLoggedinUser(userId) {
     where follower_id=${userId})`
     let tweets = await dbService.runSQL(query)
 
-    
-    return tweets
+    tweets = tweets.map(async (tweet) => {
+        const query1 = `select count(${tweet._id}) from tweet_likes
+        where tweet_id=${tweet._id}
+        group by tweet_id;`
 
-}
+        const likesCount = await dbService.runSQL(query1)
+        tweet.likeCount = likesCount[0][`count(${tweet._id})`]
 
+        const query2 = `
+        select exists(select 1 from 
+            (select user_id from tweet_likes
+            where tweet_id=${tweet._id}) as t where t.user_id=${userId});
+        `
+        const isLoggedLiked = await dbService.runSQL(query2)
+        if (Object.values(isLoggedLiked[0])[0]) {
+            tweet.isLoggedLiked = true
+        } else tweet.isLoggedLiked = false
 
-async function query() {
-    var query = `
-    select photos.id,image_url,users.username as creator
-    from photos join
-    users on
-    photos.user_id=users.id; `
-
-    var photos = await dbService.runSQL(query)
-    photos = photos.map(async (photo) => {
-        const query1 = `select comment_text,comments.created_at,username as written_by from comments 
-        join users on users.id=comments.user_id
-        where comments.photo_id=${photo.id};`
-
-        const comments = await dbService.runSQL(query1)
-        photo.comments = comments
-        return photo
+        return tweet
     })
 
-    return Promise.all(photos)
+    return Promise.all(tweets)
 }
 
 module.exports = {
-    query,
     getTweetsByLoggedinUser
 }
